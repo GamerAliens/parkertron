@@ -40,7 +40,9 @@ func parseImage(remoteURL string) (imageText string, err error) {
 		return
 	}
 
-	file.Close()
+	if err := file.Close(); err != nil {
+		Log.Error(err)
+	}
 	Log.Debug("Image File Pulled and saved to /tmp/" + fileName)
 
 	//load file to read
@@ -60,7 +62,9 @@ func parseImage(remoteURL string) (imageText string, err error) {
 	client := gosseract.NewClient()
 	defer client.Close()
 
-	client.SetImage("/tmp/" + fileName)
+	if err := client.SetImage("/tmp/" + fileName); err != nil {
+		Log.Error(err)
+	}
 	w, h := getImageDimension("/tmp/" + fileName)
 	Log.Debug("Image width is " + strconv.Itoa(h))
 	Log.Debug("Image height is " + strconv.Itoa(w))
@@ -82,11 +86,11 @@ func getImageDimension(imagePath string) (int, int) {
 		Log.Fatal("error sending message", err)
 	}
 
-	image, _, err := image.DecodeConfig(file)
+	imageConfig, _, err := image.DecodeConfig(file)
 	if err != nil {
 		Log.Fatal("error sending message", err)
 	}
-	return image.Width, image.Height
+	return imageConfig.Width, imageConfig.Height
 }
 
 // paste site handling
@@ -133,9 +137,9 @@ func parseURL(url string, parseConf parsing) (parsedText string) {
 	}
 
 	//check for image filetypes
-	for _, filetype := range parseConf.Image.FileTypes {
+	for _, fileType := range parseConf.Image.FileTypes {
 		Log.Debug("checking if image")
-		if strings.HasSuffix(url, filetype) {
+		if strings.HasSuffix(url, fileType) {
 			Log.Debug("found image file")
 			if imageText, err := parseImage(url); err != nil {
 				Log.Errorf("%s\n", err)
@@ -171,7 +175,7 @@ func parseURL(url string, parseConf parsing) (parsedText string) {
 //  	     /___/
 
 // returns response and reaction for keywords
-func parseKeyword(message, botName string, channelKeywords []keyword, parseConf parsing) (response, reaction []string) {
+func parseKeyword(message, botName string, channelKeywords []keyword) (response, reaction []string) {
 	Log.Debugf("Parsing inbound chat for %s", botName)
 
 	message = strings.ToLower(message)
@@ -216,21 +220,6 @@ func parseKeyword(message, botName string, channelKeywords []keyword, parseConf 
 // / __/ _ \/  ' \/  ' \/ _ `/ _ \/ _  /
 // \__/\___/_/_/_/_/_/_/\_,_/_//_/\_,_/
 //
-
-// AdminCommand commands are hard coded for now
-func adminCommand(message, botName string, servCommands []command, servKeywords []keyword) (response, reaction []string) {
-	Log.Debugf("Parsing inbound admin command for %s", botName)
-	message = strings.ToLower(message)
-
-	return
-}
-
-// ModCommand commands are hard coded for now
-func modCommand(message, botName string, servCommands []command) (response, reaction []string) {
-	Log.Debugf("Parsing inbound mod command for %s", botName)
-	message = strings.ToLower(message)
-	return
-}
 
 // Command parses commands
 func parseCommand(message, botName string, channelCommands []command) (response, reaction []string) {

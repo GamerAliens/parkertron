@@ -1,37 +1,44 @@
 package main
 
-func getBlacklist(inService, botName, inServer, inChannel string) (blacklist []string) {
-	perms := []permission{}
+import (
+	"fmt"
+	"log"
+	"regexp"
+)
 
+func getBlacklist(inService, botName, inServer, inChannel string) (blacklist []string) {
 	switch inService {
 	case "discord":
 		for _, bot := range discordGlobal.Bots {
 			if bot.BotName == botName {
 				for _, server := range bot.Servers {
 					if inServer == server.ServerID {
-						perms = server.Permissions
+						for _, perm := range server.Permissions {
+							if perm.BlockList {
+								for _, user := range perm.Users {
+									blacklist = append(blacklist, user)
+								}
+							}
+						}
 					}
 				}
 			}
 		}
 	case "irc":
-		for _, group := range getChannelGroups(inService, botName, inServer, inChannel) {
+		for _, group := range getChannelGroups(inService, botName, inServer) {
 			for _, channel := range group.ChannelIDs {
 				if channel == inChannel {
-					perms = group.Permissions
+					for _, perm := range group.Permissions {
+						if perm.BlockList {
+							for _, user := range perm.Users {
+								blacklist = append(blacklist, user)
+							}
+						}
+					}
 				}
 			}
 		}
 	default:
-	}
-
-	// load users that are in blacklisted groups
-	for _, perm := range perms {
-		if perm.Blacklisted {
-			for _, user := range perm.Users {
-				blacklist = append(blacklist, user)
-			}
-		}
 	}
 
 	return
@@ -72,12 +79,10 @@ func getChannels(inService, botName, inServer string) (channels []string) {
 	default:
 	}
 
-	Log.Debugf("handing channels back with a value of %s", channels)
-
 	return
 }
 
-func getChannelGroups(inService, botName, inServer, inChannel string) (chanGroups []channelGroup) {
+func getChannelGroups(inService, botName, inServer string) (chanGroups []channelGroup) {
 	switch inService {
 	case "discord":
 		for _, bot := range discordGlobal.Bots {
@@ -103,7 +108,7 @@ func getChannelGroups(inService, botName, inServer, inChannel string) (chanGroup
 
 func getCommands(inService, botName, inServer, inChannel string) (commands []command) {
 	// prep stuff for passing to the parser
-	for _, group := range getChannelGroups(inService, botName, inServer, inChannel) {
+	for _, group := range getChannelGroups(inService, botName, inServer) {
 		for _, channel := range group.ChannelIDs {
 			if inChannel == channel {
 				for _, command := range group.Commands {
@@ -116,9 +121,14 @@ func getCommands(inService, botName, inServer, inChannel string) (commands []com
 	return
 }
 
+func addCommand(inService, botName, inServer string, channelGroup int) (err error) {
+
+	return
+}
+
 func getKeywords(inService, botName, inServer, inChannel string) (keywords []keyword) {
 	// prep stuff for passing to the parser
-	for _, group := range getChannelGroups(inService, botName, inServer, inChannel) {
+	for _, group := range getChannelGroups(inService, botName, inServer) {
 		for _, channel := range group.ChannelIDs {
 			if inChannel == channel {
 				for _, keyword := range group.Keywords {
@@ -184,7 +194,7 @@ func getMentions(inService, botName, inServer, inChannel string) (ping, mention 
 
 func getParsing(inService, botName, inServer, inChannel string) (parseConf parsing) {
 	// prep stuff for passing to the parser
-	for _, group := range getChannelGroups(inService, botName, inServer, inChannel) {
+	for _, group := range getChannelGroups(inService, botName, inServer) {
 		for _, channel := range group.ChannelIDs {
 			if inChannel == channel {
 				parseConf = group.Parsing
@@ -255,6 +265,139 @@ func getCommandClear(inService, botName, inServer string) (clear bool) {
 				}
 			}
 		}
+	default:
+	}
+
+	return
+}
+
+// getPermissions returns all permissions a user has
+func getPermissions(user, inService, botName, inServer string, roles []string) (perms []string) {
+	switch inService {
+	case "discord":
+		for _, bot := range discordGlobal.Bots {
+			if bot.BotName == botName {
+				for _, server := range bot.Servers {
+					if inServer == server.ServerID {
+						for _, serverPerms := range server.Permissions {
+							// if user in in the group
+							for _, permUser := range serverPerms.Users {
+								if user == permUser {
+									for _, newPerm := range serverPerms.Permissions {
+										perms = append(perms, newPerm)
+									}
+								}
+							}
+							// if user has a role
+							for _, permRole := range serverPerms.Roles {
+								for _, userRole := range roles {
+									if userRole == permRole {
+										for _, newPerm := range serverPerms.Permissions {
+											perms = append(perms, newPerm)
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	case "irc":
+	default:
+	}
+	return
+}
+
+func hasPerms(user, inService, botName, inServer, requestedPerm string, roles []string) (authorized bool) {
+	perms := getPermissions(user, inService, botName, inServer, roles)
+
+	for p := range perms {
+		validID, err := regexp.Compile(fmt.Sprintf("%s", perms[p]))
+		if err != nil {
+			log.Printf("There was an error compiling the regex for the lfg command")
+			return
+		}
+		return validID.MatchString(requestedPerm)
+	}
+
+	return
+}
+
+func listGroupCommands(inService, botName, inServer string, channelGroup int) (commands []string) {
+	serverChannelGroups := getChannelGroups(inService, botName, inServer)
+
+	switch inService {
+	case "discord":
+		for _, channelCommands := range serverChannelGroups[channelGroup].Commands {
+				commands = append(commands, fmt.Sprintf("`%s`",channelCommands.Command))
+		}
+	case "irc":
+	default:
+	}
+	return
+}
+
+func listChannelCommands(inService, botName, inServer, inChannel string) (commands []string) {
+	// prep stuff for passing to the parser
+	switch inService {
+	case "discord":
+		for _, group := range getCommands(inService, botName, inServer, inChannel) {
+			commands = append(commands, fmt.Sprintf("`%s`",group.Command))
+		}
+	case "irc":
+	default:
+	}
+
+	return
+}
+
+func listGroupKeywords(inService, botName, inServer string, channelGroup int) (keywords []string) {
+	serverChannelGroups := getChannelGroups(inService, botName, inServer)
+
+	switch inService {
+	case "discord":
+		for _, channelKeywords := range serverChannelGroups[channelGroup].Keywords {
+			keywords = append(keywords, fmt.Sprintf("`%s`",channelKeywords.Keyword))
+		}
+	case "irc":
+	default:
+	}
+
+	return
+}
+
+func listChannelKeywords(inService, botName, inServer, inChannel string) (keywords []string) {
+	// prep stuff for passing to the parser
+	switch inService {
+	case "discord":
+		for _, group := range getKeywords(inService, botName, inServer, inChannel) {
+			keywords = append(keywords, fmt.Sprintf("`%s`",group.Keyword))
+		}
+	case "irc":
+	default:
+	}
+
+	return
+}
+
+func listChannelGroups(inService, botName, inServer string) (channelGroups []string) {
+	serverChannelGroups := getChannelGroups(inService, botName, inServer)
+
+	switch inService {
+	case "discord":
+		for gi := range serverChannelGroups {
+			newChannel := fmt.Sprintf("group %d:", gi)
+			for ci, channel := range serverChannelGroups[gi].ChannelIDs {
+				if ci == 0 {
+					newChannel = fmt.Sprintf("%s <#%s>", newChannel, channel)
+				} else {
+					newChannel = fmt.Sprintf("%s, <#%s>", newChannel, channel)
+				}
+			}
+			channelGroups = append(channelGroups, newChannel)
+		}
+	case "irc":
 	default:
 	}
 

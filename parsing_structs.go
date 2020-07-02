@@ -5,8 +5,8 @@ type permission struct {
 	Group       string   `json:"group,omitempty"`
 	Users       []string `json:"users,omitempty"`
 	Roles       []string `json:"roles,omitempty"`
-	Commands    []string `json:"commands,omitempty"`
-	Blacklisted bool     `json:"blacklisted,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	BlockList   bool     `json:"blocklist,omitempty"`
 }
 
 type command struct {

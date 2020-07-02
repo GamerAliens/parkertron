@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	stopIRC = make(map[string](chan string))
+	stopIRC = make(map[string]chan string)
 
 	ircGlobal irc
 
@@ -46,15 +46,22 @@ func ircMessageHandler(conn hirc.Conn, botName string) {
 
 	// keep alive messaging
 	if message.Command == "PING" {
-		conn.Send("PONG " + messageIn)
-		Log.Debug("PONG Sent")
+		if err := conn.Send("PONG " + messageIn); err != nil {
+			Log.Error(err)
+		} else {
+			Log.Debug("PONG Sent")
+		}
 		return
 	}
 
 	// for authentication
 	if message.Command == "NOTICE" {
 		if strings.Contains(strings.ToLower(messageIn), "this nickname is registered") {
-			conn.Send("%s IDENTIFY %s %s", author, nickname, password)
+			if err := conn.Send("%s IDENTIFY %s %s", author, nickname, password); err != nil {
+				Log.Error(err)
+			} else {
+				Log.Debug("sent identity to host")
+			}
 		}
 		return
 	}
@@ -69,7 +76,6 @@ func ircMessageHandler(conn hirc.Conn, botName string) {
 		prefix := getPrefix("irc", botName, botName)
 		channelCommands := getCommands("irc", botName, "", channel)
 		channelKeywords := getKeywords("irc", botName, "", channel)
-		channelParsing := getParsing("irc", botName, "", channel)
 
 		if author == nickname {
 			Log.Debug("User is the bot and being ignored.")
@@ -100,7 +106,7 @@ func ircMessageHandler(conn hirc.Conn, botName string) {
 
 			if !strings.HasPrefix(messageIn, prefix) {
 				Log.Debug("sending to \"" + channel)
-				parseKeyword(messageIn, botName, channelKeywords, channelParsing)
+				parseKeyword(messageIn, botName, channelKeywords)
 			} else {
 				Log.Debug("sending to \"" + channel)
 				parseCommand(strings.TrimPrefix(messageIn, prefix), botName, channelCommands)
@@ -134,7 +140,11 @@ func sendIRCMessage(conn hirc.Conn, channelName string, user string, prefix stri
 		Log.Debugf("line sent: " + response)
 		response = strings.Replace(response, "&user&", user, -1)
 		response = strings.Replace(response, "&prefix&", prefix, -1)
-		conn.Send("PRIVMSG " + "#" + channelName + " :" + response)
+		if err := conn.Send("PRIVMSG " + "#" + channelName + " :" + response); err != nil {
+			Log.Error(err)
+		} else {
+			Log.Debug("response set")
+		}
 		time.Sleep(time.Millisecond * 300)
 	}
 
@@ -198,8 +208,17 @@ func startIRCConnection(ircConfig ircBot) {
 	Log.Debugf("Connected to %s\n", host)
 
 	// send user info
-	conn.Send("USER %s %s * :"+ircConfig.Config.Server.RealName, ircConfig.Config.Server.Ident, host)
-	conn.Send("NICK %s", ircConfig.Config.Server.Nickname)
+	if err := conn.Send("USER %s %s * :"+ircConfig.Config.Server.RealName, ircConfig.Config.Server.Ident, host); err != nil {
+		Log.Error(err)
+	} else {
+		Log.Debug("sent identity to host")
+	}
+
+	if err := conn.Send("NICK %s", ircConfig.Config.Server.Nickname); err != nil {
+		Log.Error(err)
+	} else {
+		Log.Debug("sent nickname to host")
+	}
 
 	time.Sleep(time.Millisecond * 100)
 
@@ -211,7 +230,11 @@ func startIRCConnection(ircConfig ircBot) {
 			if !strings.HasPrefix(channel, "#") {
 				channel = "#" + channel
 			}
-			conn.Send("JOIN %s", channel)
+			if err := conn.Send("JOIN %s", channel); err != nil {
+				Log.Error(err)
+			} else {
+				Log.Debug("sent join command to host")
+			}
 		}
 	}
 
@@ -220,7 +243,11 @@ func startIRCConnection(ircConfig ircBot) {
 		select {
 		case <-stopIRC[ircConfig.BotName]:
 			Log.Debugf("closing channel for %s", ircConfig.BotName)
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				Log.Error(err)
+			} else {
+				Log.Debug("sent nickname to host")
+			}
 			stopIRC[ircConfig.BotName] <- ""
 			Log.Debugf("%s channel closed", ircConfig.BotName)
 			return

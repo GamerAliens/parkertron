@@ -317,20 +317,20 @@ func loadConf(conf confFile) (err error) {
 }
 
 // LoadConfig loads configs from a file to an interface
-func loadFromFile(file string, iface interface{}) (err error) {
+func loadFromFile(file string, iFace interface{}) (err error) {
 	if strings.HasSuffix(file, ".json") { // if json file
 		Log.Debug("loading json file")
-		if err = readJSONFromFile(file, iface); err != nil {
+		if err = readJSONFromFile(file, iFace); err != nil {
 			Log.Error(err)
 			return
 		}
 	} else if strings.HasSuffix(file, ".yml") || strings.HasSuffix(file, ".yaml") { // if yaml file
 		Log.Debugf("loading yaml file %s", file)
-		if err = readYamlFromFile(file, iface); err != nil {
+		if err = readYamlFromFile(file, iFace); err != nil {
 			Log.Error(err)
 			return
 		}
-		// Log.Debugf("interface %+v", iface)
+		// Log.Debugf("interface %+v", iFace)
 	} else {
 		return errors.New("no supported file type located")
 	}
@@ -339,9 +339,9 @@ func loadFromFile(file string, iface interface{}) (err error) {
 }
 
 // SaveConfig saves interfaces to a file
-func saveConfig(file string, iface interface{}) error {
+func saveConfig(file string, iFace interface{}) error {
 	// Log.Printf("converting struct data to bytesfor %s", file)
-	bytes, err := json.MarshalIndent(iface, "", " ")
+	bytes, err := json.MarshalIndent(iFace, "", " ")
 	if err != nil {
 		return fmt.Errorf("there was an error converting the user data to json")
 	}
@@ -355,8 +355,8 @@ func saveConfig(file string, iface interface{}) error {
 }
 
 // File management
-func writeJSONToFile(file string, iface interface{}) (err error) {
-	jdata, err := json.MarshalIndent(iface, "", "  ")
+func writeJSONToFile(file string, iFace interface{}) (err error) {
+	jdata, err := json.MarshalIndent(iFace, "", "  ")
 	if err != nil {
 		return
 	}

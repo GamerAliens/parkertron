@@ -66,6 +66,13 @@ func discordMessageHandler(dg *discordgo.Session, m *discordgo.MessageCreate, bo
 	channelParsing := getParsing("discord", botName, channel.GuildID, m.ChannelID)
 	serverFilter := getFilter("discord", botName, channel.GuildID)
 
+	// user info for permissions
+	authorGuildInfo, err := dg.GuildMember(m.GuildID, m.Author.ID)
+	if err != nil {
+		Log.Fatal("Author error", err)
+		return
+	}
+
 	Log.Debugf("prefix: %s", prefix)
 
 	// bot level configs for log reading
@@ -112,8 +119,7 @@ func discordMessageHandler(dg *discordgo.Session, m *discordgo.MessageCreate, bo
 	// if the channel isn't in a group drop the message
 	Log.Debugf("checking channels")
 	if !contains(getChannels("discord", botName, channel.GuildID), m.ChannelID) {
-		Log.Debugf("channel not found")
-		return
+		Log.Debugf("channel not in any channel group")
 	}
 
 	Log.Debugf("checking blacklist")
@@ -147,7 +153,7 @@ func discordMessageHandler(dg *discordgo.Session, m *discordgo.MessageCreate, bo
 	for _, url := range xurls.Relaxed().FindAllString(m.Content, -1) {
 		Log.Debugf("checking on %s", url)
 		// if the url is an ip filter it out
-		if match, err := regexp.Match("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])", []byte(url)); err != nil {
+		if match, err := regexp.Match("(?:^|/)(2[1-5][1-5]|1[0-9][0-9]|[1-9][0-9]|[0-9])(?:\\.)(2[1-5][1-5]|1[0-9][0-9]|[1-9][0-9]|[0-9])(?:\\.)(2[1-5][1-5]|1[0-9][0-9]|[1-9][0-9]|[0-9])(?:\\.)(2[1-5][1-5]|1[0-9][0-9]|[1-9][0-9]|[0-9])(?:$|\\s|/|:)", []byte(url)); err != nil {
 			Log.Error(err)
 		} else if match && !allowIP {
 			Log.Debugf("adding %s to the list", url)
@@ -210,20 +216,27 @@ func discordMessageHandler(dg *discordgo.Session, m *discordgo.MessageCreate, bo
 	} else {
 		Log.Debugf("no mentions found")
 		if strings.HasPrefix(m.Content, prefix) {
-			// command
-			response, reaction = parseCommand(strings.TrimPrefix(m.Content, prefix), botName, channelCommands)
-			// if the flag for clearing commands is set and there is a response
-			if getCommandClear("discord", botName, channel.GuildID) && len(response) > 0 {
-				Log.Debugf("removing comand message %s", m.ID)
-				if err := deleteDiscordMessage(dg, m.ChannelID, m.ID, ""); err != nil {
-					Log.Error(err)
-				}
-			} else {
+			message := strings.TrimPrefix(m.Content, prefix)
 
+			response, reaction, err = discordCommandHandler(message, m.Author.ID,"discord", botName, m.GuildID, m.ChannelID, authorGuildInfo.Roles)
+			if err != nil {
+				Log.Error(err)
+			}
+
+			if response == nil && reaction == nil {
+				response, reaction = parseCommand(strings.TrimPrefix(message, prefix), botName, channelCommands)
+
+				// if the flag for clearing commands is set and there is a response
+				if getCommandClear("discord", botName, channel.GuildID) && len(response) > 0 {
+					Log.Debugf("removing command message %s", m.ID)
+					if err := deleteDiscordMessage(dg, m.ChannelID, m.ID, ""); err != nil {
+						Log.Error(err)
+					}
+				}
 			}
 		} else {
 			// keyword
-			response, reaction = parseKeyword(m.Content, botName, channelKeywords, channelParsing)
+			response, reaction = parseKeyword(m.Content, botName, channelKeywords)
 		}
 	}
 
@@ -261,7 +274,7 @@ func discordMessageHandler(dg *discordgo.Session, m *discordgo.MessageCreate, bo
 			//parse logs and append to current response.
 			for _, url := range allURLS {
 				Log.Debugf("passing %s to keyword parser", url)
-				urlResponse, _ := parseKeyword(allParsed[url], botName, channelKeywords, channelParsing)
+				urlResponse, _ := parseKeyword(allParsed[url], botName, channelKeywords)
 				Log.Debugf("response length = %d", len(urlResponse))
 				if len(urlResponse) == 1 && urlResponse[0] == "" || len(urlResponse) == 0 {
 
@@ -289,7 +302,7 @@ func discordMessageHandler(dg *discordgo.Session, m *discordgo.MessageCreate, bo
 }
 
 // kick a user and log it to a channel if configured
-func kickDiscordUser(dg *discordgo.Session, guild, user, username, reason, authorname string) (err error) {
+func kickDiscordUser(dg *discordgo.Session, guild, user, username, reason, authorName string) (err error) {
 	if err = dg.GuildMemberDeleteWithReason(guild, user, reason); err != nil {
 		return
 	}
@@ -319,13 +332,13 @@ func kickDiscordUser(dg *discordgo.Session, guild, user, username, reason, autho
 	// TODO: Need to use new config for this
 	// sendDiscordEmbed(getDiscordConfigString("embed.audit"), embed)
 
-	Log.Info("User " + authorname + " has been kicked from " + guild + " for " + reason)
+	Log.Info(fmt.Sprintf("User %s has been kicked from %s for %s by %s", username, guild, reason, authorName))
 
 	return
 }
 
 // ban a user and log it to a channel if configured
-func banDiscordUser(dg *discordgo.Session, guild, user, username, reason, authorname string, days int) (err error) {
+func banDiscordUser(dg *discordgo.Session, guild, user, username, reason, authorName string, days int) (err error) {
 	if err = dg.GuildBanCreateWithReason(guild, user, reason, days); err != nil {
 		return
 	}
@@ -353,9 +366,9 @@ func banDiscordUser(dg *discordgo.Session, guild, user, username, reason, author
 	// }
 
 	// TODO: Need to use new config for embed audit to log to a webhook
-	//	sendDiscordEmbed(getDiscordConfigString("embed.audit"), embed)
+	//  sendDiscordEmbed(getDiscordConfigString("embed.audit"), embed)
 
-	Log.Info("User " + authorname + " has been kicked from " + guild + " for " + reason)
+	Log.Info(fmt.Sprintf("User %s has been banned from %s for %s by %s", username, guild, reason, authorName))
 
 	return
 }

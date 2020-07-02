@@ -174,7 +174,7 @@ func createExampleDiscordConfig(confDir string) (err error) {
 				Group:       "admin",
 				Users:       []string{},
 				Roles:       []string{},
-				Blacklisted: false,
+				BlockList: false,
 			},
 		},
 		Filters: []filter{
@@ -271,7 +271,7 @@ func createExampleIRCConfig(confDir string) (err error) {
 						Group:       "admin",
 						Users:       []string{},
 						Roles:       []string{},
-						Blacklisted: false,
+						BlockList: false,
 					},
 				},
 			},
